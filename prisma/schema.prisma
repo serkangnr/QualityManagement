@@ -1,0 +1,103 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  engineType      = "library"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   @default("USER") // ADMIN, AUDITOR, MANAGER, USER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Cpa {
+  id          String   @id @default(cuid())
+  source      String   // İç Denetim, Müşteri Şikayeti, Süreç İçi
+  department  String
+  description String
+  status      String   @default("AÇIK") // AÇIK, İŞLEMDE, KAPALI
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Audit {
+  id          String   @id @default(cuid())
+  title       String
+  department  String   @default("Genel")
+  date        DateTime
+  auditor     String
+  status      String   @default("PLANLANDI") // PLANLANDI, DEVAM_EDİYOR, TAMAMLANDI
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Risk {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  process     String
+  description String
+  score       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  type        String   // Prosedür, Form, El Kitabı
+  revision    String
+  publishDate DateTime
+  fileUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Complaint {
+  id          String   @id @default(cuid())
+  customer    String
+  description String
+  status      String   @default("YENİ") // YENİ, İNCELENİYOR, ÇÖZÜLDÜ
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Objective {
+  id          String   @id @default(cuid())
+  title       String
+  targetValue Float
+  actualValue Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Notification {
+  id               String   @id @default(cuid())
+  message          String
+  targetDepartment String
+  isRead           Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model SystemOption {
+  id        String   @id @default(cuid())
+  category  String   // e.g., "DEPARTMENT", "DOC_TYPE", "CPA_SOURCE"
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([category, value]) // Prevent duplicate values in the same category
+}
+
+
