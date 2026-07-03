@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, X, MagnifyingGlass, CalendarBlank, User, ArrowRight } from "@phosphor-icons/react";
+import { Plus, X, MagnifyingGlass, CalendarBlank, User, ArrowRight, Trash, DownloadSimple } from "@phosphor-icons/react";
+import { useSession } from "next-auth/react";
+import { pdf } from '@react-pdf/renderer';
+import { AuditDocument } from '@/components/pdf/AuditDocument';
 
 interface Audit {
   id: string;
@@ -17,6 +20,9 @@ export default function AuditsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
+  const { data: session } = useSession();
+  const user = session?.user;
+
   // Form States
   const [title, setTitle] = useState("");
   const [department, setDepartment] = useState("");
@@ -99,6 +105,25 @@ export default function AuditsPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Bu kaydı kalıcı olarak silmek istediğinize emin misiniz? (Bu işlem geri alınamaz)")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/audits?id=${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchAudits();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Silme işlemi başarısız.");
+      }
+    } catch (error) {
+      alert("Bir hata oluştu.");
+    }
+  };
+
   const handleDragStart = (e: React.DragEvent, id: string) => {
     e.dataTransfer.setData("auditId", id);
   };
@@ -117,6 +142,21 @@ export default function AuditsPage() {
       // Optimistic UI update for instant feedback
       setAudits(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
       await moveAudit(id, newStatus);
+    }
+  };
+
+  const handleDownloadPdf = async (audit: Audit) => {
+    try {
+      const blob = await pdf(<AuditDocument audit={audit} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `DENETIM_${audit.id.substring(0,8).toUpperCase()}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("PDF oluşturulurken hata:", error);
+      alert("PDF oluşturulamadı.");
     }
   };
 
@@ -147,7 +187,40 @@ export default function AuditsPage() {
               onDragStart={(e) => handleDragStart(e, audit.id)}
               className="bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 hover:shadow-md transition-shadow group cursor-grab active:cursor-grabbing"
             >
-              <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">{audit.title}</h4>
+              <div className="flex justify-between items-start mb-2">
+                <h4 className="font-semibold text-slate-800 dark:text-slate-100 pr-2">{audit.title}</h4>
+                <div className="flex gap-1 shrink-0">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDownloadPdf(audit); }}
+                    className="text-slate-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/30 p-1.5 rounded-lg transition-colors"
+                    title="PDF İndir"
+                  >
+                    <DownloadSimple size={16} />
+                  </button>
+                  {(() => {
+                  const isAdmin = user?.role === "ADMIN";
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const isOwner = (audit as any).authorId === user?.id;
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const docTime = new Date((audit as any).createdAt || Date.now()).getTime();
+                  const diffHours = (Date.now() - docTime) / (1000 * 60 * 60);
+                  const isWithin48Hours = diffHours <= 48;
+
+                  if (isAdmin || (isOwner && isWithin48Hours)) {
+                    return (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(audit.id); }}
+                        className="text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors"
+                        title="Sil"
+                      >
+                        <Trash size={16} />
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
+                </div>
+              </div>
               <div className="flex items-center gap-2 text-xs font-medium text-brand-600 dark:text-brand-400 mb-2">
                 <span className="px-2 py-0.5 rounded bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-800">
                   {audit.department}

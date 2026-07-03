@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, X, FileText, FilePdf, FileDoc, DownloadSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { Plus, X, FileText, FilePdf, FileDoc, DownloadSimple, MagnifyingGlass, Eye, Trash } from "@phosphor-icons/react";
+import { useSession } from "next-auth/react";
 
 interface Document {
   id: string;
@@ -11,6 +12,8 @@ interface Document {
   revision: string;
   publishDate: string;
   fileUrl: string | null;
+  status: string;
+  reviewer?: { name: string };
 }
 
 export default function DocumentsPage() {
@@ -18,6 +21,9 @@ export default function DocumentsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const { data: session } = useSession();
+  const user = session?.user;
   
   // Form States
   const [code, setCode] = useState("");
@@ -106,7 +112,46 @@ export default function DocumentsPage() {
     } else {
       alert("Bu kayda ait bir dosya bulunmuyor.");
     }
-  }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Bu dokümanı kalıcı olarak silmek istediğinize emin misiniz? (Bu işlem geri alınamaz)")) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/documents?id=${id}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        fetchDocuments();
+      } else {
+        const data = await res.json();
+        alert(data.error || "Silme işlemi başarısız.");
+      }
+    } catch (error) {
+      alert("Bir hata oluştu.");
+    }
+  };
+
+  const handleApprove = async (id: string) => {
+    if (!confirm("Bu dokümanı YAYINLA statüsüne çekmek istediğinize emin misiniz?")) return;
+    try {
+      const res = await fetch(`/api/documents`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "YAYINLANDI" }),
+      });
+      if (res.ok) {
+        fetchDocuments();
+      } else {
+        alert("Onay işlemi başarısız.");
+      }
+    } catch (error) {
+      alert("Bir hata oluştu.");
+    }
+  };
 
   const [activeTab, setActiveTab] = useState("Hepsi");
   
@@ -183,6 +228,7 @@ export default function DocumentsPage() {
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Kod</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Doküman Adı</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Revizyon</th>
+                <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Durum</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Yayın Tarihi</th>
                 <th className="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">İşlem</th>
               </tr>
@@ -213,17 +259,88 @@ export default function DocumentsPage() {
                         {doc.revision}
                       </span>
                     </td>
+                    <td className="p-4 whitespace-nowrap">
+                      {doc.status === 'YAYINLANDI' ? (
+                        <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-md text-xs font-bold border border-emerald-200">
+                          {doc.status} {doc.reviewer && <span className="font-normal text-[10px] ml-1">({doc.reviewer.name})</span>}
+                        </span>
+                      ) : (
+                        <span className="bg-amber-100 text-amber-700 px-2.5 py-1 rounded-md text-xs font-bold border border-amber-200">
+                          {doc.status}
+                        </span>
+                      )}
+                    </td>
                     <td className="p-4 whitespace-nowrap text-sm text-slate-500">
                       {new Date(doc.publishDate).toLocaleDateString('tr-TR')}
                     </td>
                     <td className="p-4 whitespace-nowrap text-right">
-                      <button 
-                        onClick={() => handleDownload(doc.fileUrl)}
-                        title={doc.fileUrl ? "Dosyayı İndir/Görüntüle" : "Dosya Bulunamadı"}
-                        className={`transition-colors p-2 rounded-lg ${doc.fileUrl ? 'text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30' : 'text-slate-300 cursor-not-allowed'}`}
-                      >
-                        <DownloadSimple size={20} weight="bold" />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button 
+                          onClick={() => {
+                            if (doc.fileUrl) {
+                              setPreviewDoc(doc);
+                            } else {
+                              alert("Bu kayda ait bir dosya bulunmuyor.");
+                            }
+                          }}
+                          title={doc.fileUrl ? "Önizle" : "Dosya Bulunamadı"}
+                          className={`transition-colors p-2 rounded-lg ${doc.fileUrl ? 'text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30' : 'text-slate-300 cursor-not-allowed'}`}
+                        >
+                          <Eye size={20} weight="bold" />
+                        </button>
+                        <button 
+                          onClick={() => handleDownload(doc.fileUrl)}
+                          title={doc.fileUrl ? "Dosyayı İndir" : "Dosya Bulunamadı"}
+                          className={`transition-colors p-2 rounded-lg ${doc.fileUrl ? 'text-brand-600 hover:bg-brand-50 dark:hover:bg-brand-900/30' : 'text-slate-300 cursor-not-allowed'}`}
+                        >
+                          <DownloadSimple size={20} weight="bold" />
+                        </button>
+                        
+                        {/* Approval Logic */}
+                        {user?.role === "ADMIN" && doc.status === "ONAY_BEKLİYOR" && (
+                          <button 
+                            onClick={() => handleApprove(doc.id)}
+                            title="Yayınla / Onayla"
+                            className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition-colors px-3 py-1 rounded-lg text-xs font-bold ml-2"
+                          >
+                            ONAYLA
+                          </button>
+                        )}
+                        
+                        {/* Deletion Logic */}
+                        {(() => {
+                          const isAdmin = user?.role === "ADMIN";
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const isOwner = (doc as any).authorId === user?.id;
+                          const docTime = new Date(doc.publishDate || doc.createdAt || Date.now()).getTime();
+                          const diffHours = (Date.now() - docTime) / (1000 * 60 * 60);
+                          const isWithin48Hours = diffHours <= 48;
+
+                          if (isAdmin || (isOwner && isWithin48Hours)) {
+                            return (
+                              <button 
+                                onClick={() => handleDelete(doc.id)}
+                                title="Sil"
+                                className="transition-colors p-2 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"
+                              >
+                                <Trash size={20} weight="bold" />
+                              </button>
+                            );
+                          } else if (isOwner && !isWithin48Hours) {
+                             return (
+                               <button 
+                                 title="Silme süresi (48 saat) doldu. Lütfen yöneticiye başvurun."
+                                 className="transition-colors p-2 rounded-lg text-slate-300 cursor-not-allowed"
+                                 disabled
+                               >
+                                 <Trash size={20} weight="bold" />
+                               </button>
+                             );
+                          }
+                          return null;
+                        })()}
+
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -343,6 +460,65 @@ export default function DocumentsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl h-[85vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50">
+              <div className="flex flex-col">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Eye className="text-brand-500" /> {previewDoc.code} - {previewDoc.name}
+                </h2>
+                <span className="text-xs text-slate-500 font-medium">Önizleme Modu</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => handleDownload(previewDoc.fileUrl)}
+                  className="text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 dark:bg-brand-900/30 dark:hover:bg-brand-900/50 transition-colors px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                >
+                  <DownloadSimple size={18} /> İndir
+                </button>
+                <button 
+                  onClick={() => setPreviewDoc(null)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="flex-1 bg-slate-100 dark:bg-slate-950 relative overflow-hidden flex items-center justify-center">
+              {previewDoc.fileUrl?.toLowerCase().endsWith('.pdf') ? (
+                <iframe 
+                  src={`${previewDoc.fileUrl}#toolbar=0`} 
+                  className="w-full h-full border-none"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-8 text-center max-w-md">
+                  <div className="w-20 h-20 bg-brand-100 dark:bg-brand-900/30 rounded-2xl flex items-center justify-center mb-6">
+                    <FileDoc size={40} className="text-brand-600 dark:text-brand-400" weight="duotone" />
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">
+                    Önizleme Desteklenmiyor
+                  </h3>
+                  <p className="text-slate-500 dark:text-slate-400 mb-6 text-sm">
+                    Sistem yerel ağda (localhost) çalıştığı için Word/Excel dosyaları doğrudan tarayıcı içinde önizlenememektedir. Güvenliğiniz ve verimliliğiniz için lütfen dosyayı cihazınıza indirerek görüntüleyin.
+                  </p>
+                  <button 
+                    onClick={() => handleDownload(previewDoc.fileUrl)}
+                    className="bg-brand-600 hover:bg-brand-700 text-white px-6 py-3 rounded-xl font-medium transition-colors shadow-sm shadow-brand-500/20 flex items-center gap-2"
+                  >
+                    <DownloadSimple size={20} weight="bold" />
+                    Dosyayı Şimdi İndir
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

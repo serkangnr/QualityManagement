@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import {
   ShieldCheck,
   WarningCircle,
@@ -13,12 +14,25 @@ import {
   SquaresFour,
   SignOut,
   Gear,
+  User,
+  Screwdriver,
 } from "@phosphor-icons/react";
 import ThemeToggle from "./ThemeToggle";
 import NotificationBell from "./NotificationBell";
 
 export default function Sidebar({ onClose }: { onClose?: () => void }) {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const user = session?.user;
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case "ADMIN": return "Kalite Yöneticisi";
+      case "AUDITOR": return "İç Denetçi";
+      case "GUEST": return "Dış Kullanıcı";
+      default: return "Personel";
+    }
+  };
 
   const navGroups = [
     {
@@ -26,6 +40,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
       items: [
         { href: "/", icon: <SquaresFour size={22} />, label: "Dashboard" },
         { href: "/documents", icon: <FileText size={22} />, label: "Doküman Kontrolü" },
+        { href: "/profile", icon: <User size={22} />, label: "Profilim" },
       ],
     },
     {
@@ -36,15 +51,27 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
         { href: "/risks", icon: <TrendUp size={22} />, label: "Risk ve Fırsatlar" },
         { href: "/customer", icon: <Users size={22} />, label: "Müşteri İletişimi" },
         { href: "/objectives", icon: <Target size={22} />, label: "Kalite Hedefleri" },
+        { href: "/calibration", icon: <Screwdriver size={22} />, label: "Cihaz Kalibrasyon" },
       ],
     },
     {
       title: "Sistem",
       items: [
-        { href: "/settings", icon: <Gear size={22} />, label: "Admin Ayarları" },
+        { href: "/settings", icon: <Gear size={22} />, label: "Admin Ayarları", roles: ["ADMIN"] },
       ],
     },
   ];
+
+  // Filter groups and items based on user role
+  const filteredNavGroups = navGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => {
+      if ((item as any).roles && user) {
+        return (item as any).roles.includes(user.role);
+      }
+      return true;
+    })
+  })).filter(group => group.items.length > 0);
 
   return (
     <aside className="w-[var(--sidebar-width)] h-screen flex flex-col bg-[var(--color-sidebar-bg)] border-r border-[var(--color-border-glass)] shrink-0 z-20 transition-all duration-300">
@@ -67,7 +94,7 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto py-6 px-4 flex flex-col gap-8">
-        {navGroups.map((group, idx) => (
+        {filteredNavGroups.map((group, idx) => (
           <div key={idx} className="flex flex-col gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-3 mb-1">
               {group.title}
@@ -97,19 +124,25 @@ export default function Sidebar({ onClose }: { onClose?: () => void }) {
       {/* User Profile / Footer */}
       <div className="p-4 border-t border-[var(--color-border-glass)]">
         <div className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer relative z-50">
-          <img
-            src="https://ui-avatars.com/api/?name=Serkan+Guner&background=random"
-            alt="User"
-            className="w-10 h-10 rounded-full border-2 border-white dark:border-slate-800 shadow-sm"
-          />
+          <div className="w-10 h-10 rounded-full border-2 border-white dark:border-slate-800 shadow-sm bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center text-brand-700 dark:text-brand-300 font-bold">
+            {user?.name?.charAt(0) || "U"}
+          </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-200 truncate">Serkan Güner</p>
-            <p className="text-xs text-slate-500 truncate">Yönetim Temsilcisi</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-200 truncate">
+              {user?.name || "Kullanıcı"}
+            </p>
+            <p className="text-xs text-slate-500 truncate">
+              {user ? getRoleLabel(user.role) : "Yükleniyor..."}
+            </p>
           </div>
           <div className="flex items-center gap-1">
             <NotificationBell />
             <ThemeToggle />
-            <button className="text-slate-400 hover:text-red-500 transition-colors p-1">
+            <button 
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="text-slate-400 hover:text-red-500 transition-colors p-1"
+              title="Çıkış Yap"
+            >
               <SignOut size={20} />
             </button>
           </div>

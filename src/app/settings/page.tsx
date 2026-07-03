@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Gear, Trash, Plus, Building, FileText, WarningCircle } from "@phosphor-icons/react";
+import { Gear, Trash, Plus, Building, FileText, WarningCircle, Users } from "@phosphor-icons/react";
 
 interface SystemOption {
   id: string;
@@ -13,31 +13,57 @@ const CATEGORIES = [
   { id: "DEPARTMENT", label: "Departmanlar", icon: <Building size={20} /> },
   { id: "DOC_TYPE", label: "Doküman Türleri", icon: <FileText size={20} /> },
   { id: "CPA_SOURCE", label: "DÖF Kaynakları", icon: <WarningCircle size={20} /> },
+  { id: "USERS", label: "Kullanıcı Yönetimi", icon: <Users size={20} /> },
 ];
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("DEPARTMENT");
   const [options, setOptions] = useState<SystemOption[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [newValue, setNewValue] = useState("");
+  
+  // User form states
+  const [userName, setUserName] = useState("");
+  const [userPhone, setUserPhone] = useState("");
+  const [userRole, setUserRole] = useState("USER");
+  const [userPassword, setUserPassword] = useState("");
+  const [userDepartment, setUserDepartment] = useState("");
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchOptions = async (category: string) => {
+  const fetchData = async (category: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/settings/options?category=${category}`);
-      if (res.ok) {
-        const data = await res.json();
-        setOptions(data);
+      if (category === "USERS") {
+        const res = await fetch("/api/users");
+        if (res.ok) {
+          const data = await res.json();
+          setUsers(data);
+        }
+      } else {
+        const res = await fetch(`/api/settings/options?category=${category}`);
+        if (res.ok) {
+          const data = await res.json();
+          setOptions(data);
+        }
       }
     } catch (error) {
-      console.error("Ayarlar çekilemedi:", error);
+      console.error("Veri çekilemedi:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchOptions(activeTab);
+    fetchData(activeTab);
+    if (activeTab === "USERS") {
+      // Also fetch departments for the dropdown
+      fetch("/api/settings/options?category=DEPARTMENT")
+        .then(res => res.json())
+        .then(data => setDepartmentOptions(data.map((d: any) => d.value)))
+        .catch(console.error);
+    }
   }, [activeTab]);
 
   const handleAddOption = async (e: React.FormEvent) => {
@@ -53,12 +79,39 @@ export default function SettingsPage() {
 
       if (res.ok) {
         setNewValue("");
-        fetchOptions(activeTab);
+        fetchData(activeTab);
       } else {
         alert("Bu kayıt zaten mevcut veya bir hata oluştu.");
       }
     } catch (error) {
       console.error("Ekleme hatası:", error);
+    }
+  };
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userName || !userPhone || !userPassword) return;
+
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: userName, phone: userPhone, role: userRole, password: userPassword, department: userDepartment }),
+      });
+
+      if (res.ok) {
+        setUserName("");
+        setUserPhone("");
+        setUserPassword("");
+        setUserRole("USER");
+        setUserDepartment("");
+        fetchData("USERS");
+      } else {
+        const data = await res.json();
+        alert(data.error || "Kullanıcı eklenirken bir hata oluştu.");
+      }
+    } catch (error) {
+      console.error("Kullanıcı ekleme hatası:", error);
     }
   };
 
@@ -71,7 +124,26 @@ export default function SettingsPage() {
       });
 
       if (res.ok) {
-        fetchOptions(activeTab);
+        fetchData(activeTab);
+      }
+    } catch (error) {
+      console.error("Silme hatası:", error);
+    }
+  };
+
+  const handleDeleteUser = async (id: string) => {
+    if (!confirm("Bu kullanıcıyı kalıcı olarak silmek istediğinize emin misiniz?")) return;
+    
+    try {
+      const res = await fetch(`/api/users?id=${id}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        fetchData("USERS");
+      } else {
+        const data = await res.json();
+        alert(data.error);
       }
     } catch (error) {
       console.error("Silme hatası:", error);
@@ -138,11 +210,61 @@ export default function SettingsPage() {
             </form>
           </div>
 
-          {/* List */}
+          {/* List or User Form */}
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
               <div className="flex items-center justify-center h-40">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-500"></div>
+              </div>
+            ) : activeTab === "USERS" ? (
+              <div className="flex flex-col gap-6">
+                <form onSubmit={handleAddUser} className="bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50 flex flex-col md:flex-row gap-4">
+                  <input type="text" placeholder="İsim Soyisim" value={userName} onChange={e=>setUserName(e.target.value)} required className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm" />
+                  <input type="text" placeholder="Tel (555...)" value={userPhone} onChange={e=>setUserPhone(e.target.value)} required className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm" />
+                  <input type="password" placeholder="Şifre" value={userPassword} onChange={e=>setUserPassword(e.target.value)} required className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm" />
+                  <select value={userDepartment} onChange={e=>setUserDepartment(e.target.value)} className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm">
+                    <option value="">Departman Seçin (Opsiyonel)</option>
+                    {departmentOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  </select>
+                  <select value={userRole} onChange={e=>setUserRole(e.target.value)} className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm">
+                    <option value="ADMIN">ADMIN (Kalite Yöneticisi)</option>
+                    <option value="AUDITOR">AUDITOR (İç Denetçi)</option>
+                    <option value="USER">USER (Personel)</option>
+                    <option value="GUEST">GUEST (Dış Kullanıcı)</option>
+                  </select>
+                  <button type="submit" disabled={!userName || !userPhone || !userPassword} className="bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors">Kullanıcı Ekle</button>
+                </form>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/50 dark:bg-slate-800/50 border-b border-[var(--color-border-glass)]">
+                        <th className="p-3 text-xs font-bold text-slate-500 uppercase">İsim Soyisim</th>
+                        <th className="p-3 text-xs font-bold text-slate-500 uppercase">Telefon</th>
+                        <th className="p-3 text-xs font-bold text-slate-500 uppercase">Departman</th>
+                        <th className="p-3 text-xs font-bold text-slate-500 uppercase">Rol</th>
+                        <th className="p-3 text-xs font-bold text-slate-500 uppercase text-right">İşlem</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--color-border-glass)]">
+                      {users.length === 0 ? (
+                         <tr><td colSpan={5} className="p-4 text-center text-slate-400">Kayıtlı kullanıcı yok.</td></tr>
+                      ) : (
+                        users.map(user => (
+                          <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                            <td className="p-3 text-sm font-semibold">{user.name}</td>
+                            <td className="p-3 text-sm text-slate-500">{user.phone}</td>
+                            <td className="p-3 text-sm text-slate-500">{user.department || '-'}</td>
+                            <td className="p-3 text-sm"><span className="bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded text-xs font-medium">{user.role}</span></td>
+                            <td className="p-3 text-right">
+                              <button onClick={() => handleDeleteUser(user.id)} className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded transition-colors"><Trash size={18} /></button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ) : options.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-slate-400">

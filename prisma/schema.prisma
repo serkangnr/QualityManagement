@@ -13,11 +13,23 @@ datasource db {
 
 model User {
   id        String   @id @default(cuid())
+  phone     String   @unique
+  password  String
   name      String
-  email     String   @unique
-  role      String   @default("USER") // ADMIN, AUDITOR, MANAGER, USER
+  department String?
+  role      String   @default("USER") // ADMIN, AUDITOR, USER, GUEST
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  cpasCreated Cpa[] @relation("CpaAuthor")
+  cpasAssigned Cpa[] @relation("CpaAssignee")
+  audits     Audit[]
+  risks      Risk[]
+  documentsCreated  Document[] @relation("DocAuthor")
+  documentsReviewed Document[] @relation("DocReviewer")
+  complaints Complaint[]
+  objectives Objective[]
+  devices    Device[]
 }
 
 model Cpa {
@@ -25,7 +37,15 @@ model Cpa {
   source      String   // İç Denetim, Müşteri Şikayeti, Süreç İçi
   department  String
   description String
+  rootCause   String?
+  actionPlan  String?
+  resolutionNote String?
   status      String   @default("AÇIK") // AÇIK, İŞLEMDE, KAPALI
+  authorId    String?
+  author      User?    @relation("CpaAuthor", fields: [authorId], references: [id])
+  assigneeId  String?
+  assignee    User?    @relation("CpaAssignee", fields: [assigneeId], references: [id])
+  targetDate  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -37,6 +57,8 @@ model Audit {
   date        DateTime
   auditor     String
   status      String   @default("PLANLANDI") // PLANLANDI, DEVAM_EDİYOR, TAMAMLANDI
+  authorId    String?
+  author      User?    @relation(fields: [authorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -47,6 +69,8 @@ model Risk {
   process     String
   description String
   score       Int
+  authorId    String?
+  author      User?    @relation(fields: [authorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -59,6 +83,11 @@ model Document {
   revision    String
   publishDate DateTime
   fileUrl     String?
+  status      String   @default("ONAY_BEKLİYOR") // ONAY_BEKLİYOR, YAYINLANDI
+  authorId    String?
+  author      User?    @relation("DocAuthor", fields: [authorId], references: [id])
+  reviewerId  String?
+  reviewer    User?    @relation("DocReviewer", fields: [reviewerId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -68,6 +97,8 @@ model Complaint {
   customer    String
   description String
   status      String   @default("YENİ") // YENİ, İNCELENİYOR, ÇÖZÜLDÜ
+  authorId    String?
+  author      User?    @relation(fields: [authorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -77,6 +108,8 @@ model Objective {
   title       String
   targetValue Float
   actualValue Float
+  authorId    String?
+  author      User?    @relation(fields: [authorId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -100,4 +133,15 @@ model SystemOption {
   @@unique([category, value]) // Prevent duplicate values in the same category
 }
 
-
+model Device {
+  id                  String   @id @default(cuid())
+  name                String
+  serialNo            String?
+  calibrationDate     DateTime
+  nextCalibrationDate DateTime
+  status              String   @default("AKTİF") // AKTİF, PASİF, KALİBRASYON_DIŞI
+  authorId            String?
+  author              User?    @relation(fields: [authorId], references: [id])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
